@@ -20,6 +20,13 @@ class TCPReceiver {
     //! The maximum number of bytes we'll store.
     size_t _capacity;
 
+    bool _syn_flag = false;
+    bool _fin_flag = false;
+    uint64_t _abs_seqno = 0;
+    uint32_t _isn = 0;
+    bool _isn_set_flag = false;
+    uint64_t _abs_ackno = 0;
+
   public:
     //! \brief Construct a TCP receiver
     //!

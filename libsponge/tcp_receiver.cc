@@ -11,9 +11,43 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 using namespace std;
 
 void TCPReceiver::segment_received(const TCPSegment &seg) {
-    DUMMY_CODE(seg);
+    if (seg.header().syn) {
+        _syn_flag = true;
+        _isn_set_flag = true;
+        _isn = seg.header().seqno.raw_value();
+        _abs_seqno = 0; 
+        _abs_ackno = 1;
+    } else if (!_syn_flag) {
+        return;
+    }
+    _abs_seqno = unwrap(seg.header().seqno, WrappingInt32(_isn), _abs_seqno);
+    uint64_t prev_index = _reassembler.get_head_index();
+    _reassembler.push_substring(seg.payload().copy(), _abs_seqno == 0 ? 0 : _abs_seqno - 1, false);
+    uint64_t post_index = _reassembler.get_head_index();
+    size_t lent = post_index - prev_index;
+
+    if (!seg.header().fin) {
+        WrappingInt32 seqt = seg.header().seqno;
+        WrappingInt32 ackt = WrappingInt32(wrap(_abs_ackno, WrappingInt32(_isn)));
+        if (!seg.header().syn && ackt == seqt) {
+            _abs_ackno += min(lent, _capacity);
+        } else if (seg.header().syn && ackt == seqt + 1) {
+            _abs_ackno += min(lent, _capacity);
+        }
+    } else {
+        if (!_fin_flag) _fin_flag = true;
+        _abs_ackno +=  min(lent, _capacity);
+    }
+
+    if (_fin_flag && _reassembler.empty()) {
+        _reassembler.stream_out().end_input();
+            _abs_ackno++;
+    }
 }
 
-optional<WrappingInt32> TCPReceiver::ackno() const { return {}; }
+optional<WrappingInt32> TCPReceiver::ackno() const { 
+    if (!_isn_set_flag) return {};
+    return WrappingInt32(wrap(_abs_ackno, WrappingInt32(_isn)));
+}
 
-size_t TCPReceiver::window_size() const { return {}; }
+size_t TCPReceiver::window_size() const { return _capacity - _reassembler.stream_out().buffer_size(); }

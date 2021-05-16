@@ -77,7 +77,7 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
         if (r == _map.begin()) break;
         auto l = --r;
         pair<uint64_t, string> prev_block;
-        while((merge_bytes = push_substring_aux_merge(cur_block, prev_block = *l) >= 0)) {
+        while((merge_bytes = push_substring_aux_merge(cur_block, prev_block = *l)) >= 0) {
             _unassemble_count -= merge_bytes;
             _map.erase(l);
             l = _map.lower_bound(cur_block.first);
