@@ -20,6 +20,7 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
     } else if (!_syn_flag) {
         return;
     }
+    if (_fin_flag && _reassembler.empty()) return;
     _abs_seqno = unwrap(seg.header().seqno, WrappingInt32(_isn), _abs_seqno);
     uint64_t prev_index = _reassembler.get_head_index();
     _reassembler.push_substring(seg.payload().copy(), _abs_seqno == 0 ? 0 : _abs_seqno - 1, false);
