@@ -38,7 +38,7 @@ class TCPSender {
     size_t _byte_in_flight{0};
     size_t _timer{0};
     bool _set_time = false;
-    bool _fin_flag = false;
+    bool _fin_flag = false; // is true if FIN has been sent
     unsigned int _RTO{0};
     unsigned int _consecutive_retransmissions{0};
 
@@ -97,6 +97,13 @@ class TCPSender {
     //! \brief relative seqno for the next byte to be sent
     WrappingInt32 next_seqno() const { return wrap(_next_seqno, _isn); }
     //!@}
+
+    size_t get_time() const { return _timer; }
+
+    bool has_fin() const { return _fin_flag; }
+
+    uint64_t get_ackno_absolute() const { return _ackno; }
+
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_SENDER_HH

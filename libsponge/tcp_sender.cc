@@ -3,6 +3,7 @@
 #include "tcp_config.hh"
 
 #include <random>
+#include<iostream>
 
 // Dummy implementation of a TCP sender
 
@@ -29,8 +30,8 @@ void TCPSender::fill_window() {
     size_t win_size = _win_size == 0 ? 1 : _win_size;
     size_t sent_bytes = _next_seqno - _ackno;
     size_t remain_win_size = win_size - sent_bytes;
-
-    while(remain_win_size > 0 || _fin_flag == true) {
+    bool flag = false;
+    while(remain_win_size > 0 || flag == true) {
         size_t read_len = min(remain_win_size, TCPConfig::MAX_PAYLOAD_SIZE);
         if (_ackno == 0) read_len = 0;  // have not connected yet, should not carry payload
         string str = _stream.read(read_len);
@@ -47,8 +48,10 @@ void TCPSender::fill_window() {
         if (seg.header().fin) {
             if(_next_seqno + seg.length_in_sequence_space() == _ackno + win_size + 1)
                 seg.header().fin = false; // temporarily remove the FIN flag and try to send it next time
+            flag = true;
             _fin_flag = true;
         }
+
         if (seg.length_in_sequence_space() == 0) return;
         
 
@@ -84,6 +87,7 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
     }
     size_t received_bytes = new_ackno - _ackno;
+    // cerr << "recv_bytes: " << received_bytes << endl;
     if (_ackno == 0 && received_bytes != 1) return; // wrong ACK when connecting
     _ackno = new_ackno;
     _byte_in_flight -= received_bytes;
@@ -109,10 +113,10 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
             TCPSegment seg = _segments_outstanding.front();
             string s = seg.payload().copy();
             _segments_out.push(seg);
-        }
-        if (_win_size) {
-            _consecutive_retransmissions++;
-            _RTO <<= 1;
+            if (_win_size) {
+                _consecutive_retransmissions++;
+                _RTO <<= 1;
+            }
         }
         _timer = 0;
     }

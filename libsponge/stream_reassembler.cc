@@ -1,5 +1,5 @@
 #include "stream_reassembler.hh"
-
+#include<iostream>
 // Dummy implementation of a stream reassembler.
 
 // For Lab 1, please replace with a real implementation that passes the
@@ -39,7 +39,7 @@ long StreamReassembler::push_substring_aux_merge(pair<uint64_t, std::string>& bl
 //! possibly out-of-order, from the logical stream, and assembles any newly
 //! contiguous substrings and writes them into the output stream in order.
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-    if (index > _head_index + _capacity) return;
+    if (index >= _head_index + _capacity) return;
 
     size_t st = index, len = data.size();
     string s = data;
