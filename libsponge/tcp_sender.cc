@@ -27,11 +27,12 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 uint64_t TCPSender::bytes_in_flight() const { return _byte_in_flight; }
 
 void TCPSender::fill_window() {
+    if(_not_fill) return;
     size_t win_size = _win_size == 0 ? 1 : _win_size;
     size_t sent_bytes = _next_seqno - _ackno;
     size_t remain_win_size = win_size - sent_bytes;
-    bool flag = false;
-    while(remain_win_size > 0 || flag == true) {
+    
+    while(remain_win_size > 0 || _fin_to_be_sent) {
         size_t read_len = min(remain_win_size, TCPConfig::MAX_PAYLOAD_SIZE);
         if (_ackno == 0) read_len = 0;  // have not connected yet, should not carry payload
         string str = _stream.read(read_len);
@@ -41,20 +42,20 @@ void TCPSender::fill_window() {
         seg.header().seqno = next_seqno();
         seg.header().syn = _ackno == 0 ? true : false;
         seg.header().fin = stream_in().eof() && 
-                           stream_in().bytes_read() + 1 == _next_seqno + str.size();
+                           stream_in().bytes_written() + 1 == _next_seqno + str.size();
         seg.payload() = Buffer(move(str));
         
         // with FIN flag, but exceed window size
         if (seg.header().fin) {
-            if(_next_seqno + seg.length_in_sequence_space() == _ackno + win_size + 1)
+            if(_next_seqno + seg.length_in_sequence_space() == _ackno + win_size + 1) {
                 seg.header().fin = false; // temporarily remove the FIN flag and try to send it next time
-            flag = true;
-            _fin_flag = true;
+                _fin_to_be_sent = true;
+            }
         }
-
         if (seg.length_in_sequence_space() == 0) return;
-        
+        if (!_valid_ack && seg.payload().copy().size() == 0 && !seg.header().fin) return;
 
+        
         _next_seqno += seg.length_in_sequence_space();
         _byte_in_flight += seg.length_in_sequence_space();
       
@@ -67,6 +68,14 @@ void TCPSender::fill_window() {
         }
         sent_bytes = _next_seqno - _ackno;
         remain_win_size = win_size - sent_bytes;
+
+        if (_fin_to_be_sent) {
+            if (seg.header().fin) {
+                _fin_flag = true;
+            }
+            break;
+        }
+        
     }
 }
 
@@ -74,7 +83,11 @@ void TCPSender::fill_window() {
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
     size_t new_ackno = unwrap(ackno, _isn, _ackno);
-    if (new_ackno < _ackno) return;  // outdated ACK
+    size_t win_size = window_size == 0 ? 1 : window_size;
+    if (new_ackno < _ackno || new_ackno + win_size <= _next_seqno) {  // outdated ACK or segment has been sent
+        _valid_ack = false;
+        return;
+    }  
     while(_segments_outstanding.size()) {
         TCPSegment seg = _segments_outstanding.front();
         uint64_t abs_seqno = unwrap(seg.header().seqno, _isn, _next_seqno);
@@ -87,27 +100,33 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
     }
     size_t received_bytes = new_ackno - _ackno;
-    // cerr << "recv_bytes: " << received_bytes << endl;
-    if (_ackno == 0 && received_bytes != 1) return; // wrong ACK when connecting
+
+    if (_ackno == 0 && received_bytes != 1) {  // wrong ACK when connecting
+        _not_fill = true;
+        return; 
+    }
     _ackno = new_ackno;
     _byte_in_flight -= received_bytes;
-    _win_size = window_size;
+    _win_size = window_size;  // if window_size = 0, then RTO will not be doubled
 
     // reset
-    _RTO = _initial_retransmission_timeout;
-    _consecutive_retransmissions = 0;
+    if (window_size) {  // When filling window, treat a '0' window size as equal to '1' but don't back off RTO
+        _RTO = _initial_retransmission_timeout;
+        _consecutive_retransmissions = 0;
+    }
     if (_segments_outstanding.size() && received_bytes != 0) {
         _set_time = true;
         _timer = 0;
     }
-
-    fill_window();
+   
+    
+    _not_fill = false;
+    _valid_ack = true;
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void TCPSender::tick(const size_t ms_since_last_tick) { 
     _timer += ms_since_last_tick;
-    
     if (_timer >= _RTO) {
         if (_segments_outstanding.size()) {
             TCPSegment seg = _segments_outstanding.front();
@@ -120,7 +139,6 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
         }
         _timer = 0;
     }
-    
 }
 
 unsigned int TCPSender::consecutive_retransmissions() const { return _consecutive_retransmissions; }

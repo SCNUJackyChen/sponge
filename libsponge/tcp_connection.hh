@@ -88,11 +88,14 @@ class TCPConnection {
     bool active() const;
     //!@}
 
+
     //! Construct a new connection from a configuration
     explicit TCPConnection(const TCPConfig &cfg) : _cfg{cfg} {}
 
     //! \name construction and destruction
     //! moving is allowed; copying is disallowed; default construction not possible
+
+    void clean_shutdown();
 
     //!@{
     ~TCPConnection();  //!< destructor sends a RST if the connection is still open

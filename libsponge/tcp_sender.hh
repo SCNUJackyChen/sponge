@@ -39,8 +39,11 @@ class TCPSender {
     size_t _timer{0};
     bool _set_time = false;
     bool _fin_flag = false; // is true if FIN has been sent
+    bool _fin_to_be_sent = false; 
     unsigned int _RTO{0};
     unsigned int _consecutive_retransmissions{0};
+    bool _not_fill = false;
+    bool _valid_ack = true;
 
   public:
     //! Initialize a TCPSender
@@ -103,6 +106,7 @@ class TCPSender {
     bool has_fin() const { return _fin_flag; }
 
     uint64_t get_ackno_absolute() const { return _ackno; }
+
 
 };
 
